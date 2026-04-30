@@ -1,0 +1,33 @@
+name: Run Scraper Daily
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # runs every day at 7am
+  workflow_dispatch:      # allows manual run
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get code
+        uses: actions/checkout@v3
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install packages
+        run: |
+          pip install playwright pandas
+          playwright install --with-deps
+
+      - name: Run scraper
+        run: python scraper.py
+
+      - name: Save results
+        uses: actions/upload-artifact@v4
+        with:
+          name: leads
+          path: leads.csv
