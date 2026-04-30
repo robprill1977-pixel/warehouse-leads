@@ -1,36 +1,85 @@
-name: Run Scraper Daily
+from playwright.sync_api import sync_playwright
+import pandas as pd
+import time
 
-on:
-  schedule:
-    - cron: '0 7 * * *'
-  workflow_dispatch:
+KEYWORDS = ["warehouse", "b8", "storage", "distribution", "logistics", "industrial"]
 
-jobs:
-  run:
-    runs-on: ubuntu-latest
+COUNCILS = [
+    {
+        "name": "Leeds",
+        "url": "https://publicaccess.leeds.gov.uk/online-applications/search.do?action=advanced"
+    },
+    {
+        "name": "Bolton",
+        "url": "https://publicaccess.bolton.gov.uk/online-applications/search.do?action=advanced"
+    }
+]
 
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # ✅ removes warning
+def is_relevant(text):
+    text = text.lower()
+    return any(k in text for k in KEYWORDS)
 
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+def scrape_council(page, council):
+    results = []
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+    try:
+        print(f"Opening {council['name']}")
 
-      - name: Install dependencies
-  run: |
-    pip install playwright pandas beautifulsoup4 lxml
-    python -m playwright install --with-deps
+        page.goto(council["url"], timeout=60000)
+        page.wait_for_timeout(3000)
 
-      - name: Run scraper
-        run: python planning_scraper.py
+        # Try generic keyword search field (varies by council)
+        inputs = page.query_selector_all("input[type='text']")
 
-      - name: Upload CSV
-        uses: actions/upload-artifact@v4
-        with:
-          name: leads
-          path: leads.csv
+        if inputs:
+            inputs[0].fill("warehouse")
+
+        # Try clicking search button safely
+        buttons = page.query_selector_all("input[type='submit'], button")
+        if buttons:
+            buttons[0].click()
+
+        page.wait_for_timeout(5000)
+
+        # Grab all visible text (fallback-safe method)
+        content = page.content()
+
+        if is_relevant(content):
+            results.append({
+                "Council": council["name"],
+                "Description": "Potential match found (review manually)",
+                "Link": council["url"]
+            })
+
+    except Exception as e:
+        print(f"Error {council['name']}: {e}")
+
+    return results
+
+def run():
+    all_results = []
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+
+        for council in COUNCILS:
+            data = scrape_council(page, council)
+            all_results.extend(data)
+
+        browser.close()
+
+    df = pd.DataFrame(all_results)
+
+    if df.empty:
+        df = pd.DataFrame([{
+            "Council": "None",
+            "Description": "No matches found",
+            "Link": ""
+        }])
+
+    df.to_csv("leads.csv", index=False)
+    print("DONE - leads.csv created")
+
+if __name__ == "__main__":
+    run()
