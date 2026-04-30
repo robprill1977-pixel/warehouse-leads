@@ -22,9 +22,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install playwright pandas
-          python -m playwright install --with-deps
+  run: |
+    pip install playwright pandas beautifulsoup4 lxml
+    python -m playwright install --with-deps
 
       - name: Run scraper
         run: python planning_scraper.py
